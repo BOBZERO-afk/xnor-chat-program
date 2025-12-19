@@ -1,0 +1,12 @@
+.venv/
+build/
+dist/
+*.pyc
+__pycache__/
+.env
+*.zip
+*.exe
+*.log
+logs/
+.ruff_cache/
+.pytest_cache/

@@ -1,0 +1,80 @@
+name: Build Windows executable
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+      - name: Build EXE
+        run: |
+          pyinstaller --noconfirm --onefile "XNOR LOMOMELEDOR.py"
+      - name: Zip artifact
+        run: |
+          powershell -c "Compress-Archive -Path dist\* -DestinationPath release-XNOR-windows.zip -Force"
+
+      - name: Build NSIS installer
+        run: |
+          choco install -y nsis || true
+          "${{ runner.tool_cache }}\windows\nsis\makensis.exe" || makensis || true
+          if (Test-Path scripts\installer.nsi) {
+            makensis scripts\installer.nsi
+            Compress-Archive -Path "${{ github.workspace }}\xnor-chat-service-installer.exe" -DestinationPath release-XNOR-installer.zip -Force
+          } else {
+            Write-Host "No NSIS script found"
+          }
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: "XNOR Release ${{ github.ref }}"
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset (exe zip)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-XNOR-windows.zip
+          asset_name: release-XNOR-windows.zip
+          asset_content_type: application/zip
+
+      - name: Check installer zip
+        id: check_installer
+        run: |
+          if (Test-Path release-XNOR-installer.zip) {
+            echo "exists=true" >> $GITHUB_OUTPUT
+          } else {
+            echo "exists=false" >> $GITHUB_OUTPUT
+          }
+        shell: powershell
+
+      - name: Upload Release Asset (installer zip)
+        if: ${{ steps.check_installer.outputs.exists == 'true' }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-XNOR-installer.zip
+          asset_name: release-XNOR-installer.zip
+          asset_content_type: application/zip
